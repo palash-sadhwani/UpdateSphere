@@ -3,7 +3,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/white">
+    android:background="@color/chat_background">
 
     <!-- Header Container -->
     <LinearLayout
@@ -16,14 +16,15 @@
         <com.google.android.material.appbar.AppBarLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:theme="@style/ThemeOverlay.MaterialComponents.Dark.ActionBar">
+            android:theme="@style/ThemeOverlay.Material3.Dark">
 
             <com.google.android.material.appbar.MaterialToolbar
                 android:id="@+id/toolbar"
                 android:layout_width="match_parent"
                 android:layout_height="?attr/actionBarSize"
                 app:title="Contacts"
-                app:titleTextColor="@color/black"
+                android:background="@color/primaryDark"
+                app:titleTextColor="@color/primary_text"
                 app:navigationContentDescription="Back"/>
         </com.google.android.material.appbar.AppBarLayout>
 
@@ -52,8 +53,7 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:clipToPadding="false"
-            android:paddingTop="8dp"
-            android:paddingBottom="8dp"/>
+            android:padding="12dp"/>
 
         <TextView
             android:id="@+id/emptyView"
@@ -61,7 +61,7 @@
             android:layout_height="match_parent"
             android:gravity="center"
             android:text="No contacts found"
-            android:textColor="@color/grey_medium"
+            android:textColor="@color/secondary_text"
             android:textSize="16sp"
             android:visibility="gone"/>
     </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>

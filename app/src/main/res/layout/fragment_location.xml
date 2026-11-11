@@ -7,10 +7,10 @@
     <com.google.android.material.appbar.MaterialToolbar
         android:id="@+id/toolbar"
         android:layout_width="match_parent"
-        android:layout_height="50dp"
-        android:background="@color/white"
+        android:layout_height="@dimen/toolbar_height"
+        android:background="@color/primaryDark"
         app:title="Location"
-        app:titleTextColor="@android:color/black"
+        app:titleTextColor="@color/primary_text"
         />
 
     <org.osmdroid.views.MapView
@@ -28,7 +28,7 @@
         android:layout_margin="16dp"
         app:cardElevation="8dp"
         app:cardCornerRadius="8dp"
-        app:cardBackgroundColor="@android:color/white">
+        app:cardBackgroundColor="@color/surface_elevated">
 
         <LinearLayout
             android:layout_width="wrap_content"
@@ -41,7 +41,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="Share Location"
-                android:textColor="@android:color/black"
+                android:textColor="@color/primary_text"
                 android:padding="4dp"/>
 
         </LinearLayout>
@@ -58,7 +58,7 @@
         android:layout_marginEnd="16dp"
         android:layout_marginBottom="16dp"
         android:src="@drawable/baseline_my_location_24"
-        app:backgroundTint="@color/primaryDark"
+        app:backgroundTint="@color/violet_600"
         app:elevation="8dp"
         app:tint="@color/white" />
 

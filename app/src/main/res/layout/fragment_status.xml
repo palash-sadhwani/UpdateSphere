@@ -8,10 +8,10 @@
     <com.google.android.material.appbar.MaterialToolbar
         android:id="@+id/toolbar"
         android:layout_width="match_parent"
-        android:layout_height="50dp"
-        android:background="@color/white"
+        android:layout_height="@dimen/toolbar_height"
+        android:background="@color/primaryDark"
         app:title="Status Updates"
-        app:titleTextColor="@android:color/black"
+        app:titleTextColor="@color/primary_text"
        />
 
     <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
@@ -25,8 +25,7 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:clipToPadding="false"
-            android:paddingTop="8dp"
-            android:paddingBottom="88dp"/>
+            android:padding="12dp"/>
     </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
 
     <com.google.android.material.floatingactionbutton.FloatingActionButton
@@ -40,6 +39,6 @@
         android:layout_marginEnd="16dp"
         android:layout_marginBottom="16dp"
         android:src="@drawable/ic_add"
-        app:backgroundTint="@color/primaryDark"
-        app:tint="@android:color/white" />
+        app:backgroundTint="@color/violet_600"
+        app:tint="@color/white" />
 </RelativeLayout>

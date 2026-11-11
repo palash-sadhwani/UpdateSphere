@@ -1,0 +1,8 @@
+<resources>
+    <dimen name="screen_padding">20dp</dimen>
+    <dimen name="section_spacing">24dp</dimen>
+    <dimen name="card_radius">20dp</dimen>
+    <dimen name="control_radius">16dp</dimen>
+    <dimen name="toolbar_height">64dp</dimen>
+    <dimen name="row_height">76dp</dimen>
+</resources>

@@ -1,40 +1,31 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="primaryDark">#075E54</color>
-    <color name="primaryLight">#128C7E</color>
-    <color name="accent">#25D366</color>
-
-    <color name="grey_light">#CCCCCC</color>
-
-    <color name="grey_dark">#333333</color>
-    <color name="red">#C21111</color>
-
-    <color name="offline_gray">#BBFFFFFF</color>
-    <color name="chat_background">#e5ddd5</color>
-
-    <color name="divider">#E0E0E0</color>
-
-    <color name="preview_background">#F5F5F5</color>
-    <color name="secondary_text">#757575</color>
-    <color name="divider_color">#E0E0E0</color>
-    <color name="online_green">#4CAF50</color>
-    <color name="primaryColor">#6200EE</color>
-    <color name="grey_medium">#757575</color>
-    <color name="white">#FFFFFF</color>
+    <color name="primaryDark">#0E0B1A</color>
+    <color name="primaryLight">#8B5CF6</color>
+    <color name="accent">#A78BFA</color>
+    <color name="violet_600">#7C3AED</color>
+    <color name="violet_400">#A78BFA</color>
+    <color name="surface">#171421</color>
+    <color name="surface_elevated">#211C2D</color>
+    <color name="surface_highlight">#2B2440</color>
+    <color name="chat_background">#100D17</color>
+    <color name="input_background">#211C2D</color>
+    <color name="divider">#302A3D</color>
+    <color name="divider_color">#302A3D</color>
+    <color name="primary_text">#FFF8FFFF</color>
+    <color name="secondary_text">#B8B0C7</color>
+    <color name="grey_light">#D8D1E2</color>
+    <color name="grey_dark">#282233</color>
+    <color name="grey_medium">#8F879F</color>
+    <color name="offline_gray">#80788E</color>
+    <color name="online_green">#5EE6A8</color>
+    <color name="red">#FF6B81</color>
+    <color name="preview_background">#211C2D</color>
+    <color name="image_placeholder">#302A3D</color>
+    <color name="primaryColor">#7C3AED</color>
+    <color name="colorPrimary">#7C3AED</color>
+    <color name="colorPrimaryDark">#0E0B1A</color>
+    <color name="colorPrimaryLight">#A78BFA</color>
+    <color name="white">#FFFFFFFF</color>
     <color name="black">#000000</color>
-
-    <color name="colorPrimary">#6200EE</color>
-    <color name="colorPrimaryDark">#3700B3</color>
-    <color name="colorPrimaryLight">#BB86FC</color>
-
-    <!-- Text colors -->
-    <color name="primary_text">#DE000000</color>  <!-- 87% black -->
-
-
-    <!-- Background colors -->
-    <color name="light_grey_background">#FAFAFA</color>
-    <color name="image_placeholder">#EEEEEE</color>
-
-
-
 </resources>

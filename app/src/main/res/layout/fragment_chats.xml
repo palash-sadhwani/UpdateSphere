@@ -8,15 +8,16 @@
     <com.google.android.material.appbar.AppBarLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:theme="@style/ThemeOverlay.MaterialComponents.Dark.ActionBar"
+        android:theme="@style/ThemeOverlay.Material3.Dark"
         >
 
         <com.google.android.material.appbar.MaterialToolbar
             android:id="@+id/toolbar"
             android:layout_width="match_parent"
-            android:layout_height="50dp"
+            android:layout_height="@dimen/toolbar_height"
+            android:background="@color/primaryDark"
             app:title="Chats"
-            app:titleTextColor="#000000"
+            app:titleTextColor="@color/primary_text"
 
             />
     </com.google.android.material.appbar.AppBarLayout>
@@ -27,23 +28,25 @@
         android:layout_height="match_parent"
         app:layout_behavior="@string/appbar_scrolling_view_behavior">
 
-        <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/chatsRecyclerView"
+        <FrameLayout
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:clipToPadding="false"
-            android:paddingTop="8dp"
-            android:paddingBottom="8dp"/>
-
-        <TextView
-            android:id="@+id/emptyView"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:gravity="center"
-            android:text="No chats available"
-            android:textColor="@color/grey_medium"
-            android:textSize="16sp"
-            android:visibility="gone"/>
+            android:layout_height="match_parent">
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/chatsRecyclerView"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:clipToPadding="false"
+                android:padding="12dp"/>
+            <TextView
+                android:id="@+id/emptyView"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:text="No chats available"
+                android:textColor="@color/secondary_text"
+                android:textSize="16sp"
+                android:visibility="gone"/>
+        </FrameLayout>
     </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
 
     <com.google.android.material.floatingactionbutton.FloatingActionButton
@@ -53,6 +56,6 @@
         android:layout_gravity="bottom|end"
         android:layout_margin="16dp"
         android:src="@drawable/ic_add"
-        app:backgroundTint="@color/primaryDark"
+        app:backgroundTint="@color/violet_600"
         app:tint="@color/white"/>
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

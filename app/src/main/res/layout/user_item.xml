@@ -2,9 +2,9 @@
 <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
-    android:layout_height="72dp"
-    android:padding="12dp"
-    android:background="?attr/selectableItemBackground">
+    android:layout_height="@dimen/row_height"
+    android:padding="10dp"
+    android:background="@drawable/user_item_bg">
 
     <de.hdodenhof.circleimageview.CircleImageView
         android:id="@+id/userAvatar"
@@ -38,7 +38,7 @@
             android:text="User Name"
             android:textSize="16sp"
             android:textStyle="bold"
-            android:textColor="@color/black"
+            android:textColor="@color/primary_text"
             android:ellipsize="end"
             android:maxLines="1"/>
 
@@ -48,7 +48,7 @@
             android:layout_height="wrap_content"
             android:text="Online"
             android:textSize="14sp"
-            android:textColor="@color/grey_medium"
+            android:textColor="@color/secondary_text"
             android:ellipsize="end"
             android:maxLines="1"/>
     </LinearLayout>

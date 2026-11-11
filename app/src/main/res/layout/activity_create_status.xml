@@ -3,20 +3,20 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@android:color/white"
-    android:padding="16dp">
+    android:background="@color/chat_background"
+    android:padding="@dimen/screen_padding">
 
     <!-- Header with back button and title -->
     <com.google.android.material.appbar.MaterialToolbar
         android:id="@+id/toolbar"
         android:layout_width="match_parent"
         android:layout_height="?attr/actionBarSize"
-        android:background="@android:color/transparent"
+        android:background="@color/primaryDark"
         android:elevation="0dp"
 
         app:title="@string/create_new_status"
         app:titleTextAppearance="@style/TextAppearance.Material3.TitleMedium"
-        app:titleTextColor="@android:color/black"/>
+        app:titleTextColor="@color/primary_text"/>
 
     <!-- Status input card -->
     <com.google.android.material.card.MaterialCardView
@@ -27,7 +27,8 @@
         android:layout_marginTop="16dp"
         app:cardElevation="0dp"
         app:shapeAppearance="@style/ShapeAppearance.Material3.MediumComponent"
-        app:strokeColor="@color/primaryLight"
+        app:cardBackgroundColor="@color/surface_elevated"
+        app:strokeColor="@color/divider"
         app:strokeWidth="1dp">
 
         <LinearLayout
@@ -42,7 +43,7 @@
                 android:layout_height="wrap_content"
                 android:hint="@string/whats_on_your_mind"
                 style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
-                app:boxStrokeColor="@color/primaryLight"
+                app:boxStrokeColor="@color/violet_400"
                 app:boxStrokeWidth="1dp"
                 app:boxStrokeWidthFocused="2dp">
 
@@ -70,7 +71,7 @@
                     android:layout_height="match_parent"
                     android:scaleType="centerCrop"
                     android:contentDescription="@string/status_image"
-                    android:background="@color/primaryLight"/>
+                    android:background="@color/surface_highlight"/>
 
                 <com.google.android.material.floatingactionbutton.FloatingActionButton
                     android:id="@+id/removeImageButton"
@@ -79,8 +80,8 @@
                     android:layout_gravity="top|end"
                     android:layout_margin="8dp"
                     android:src="@drawable/ic_close"
-                    app:backgroundTint="@color/primaryLight"
-                    app:tint="@color/primaryLight"
+                    app:backgroundTint="@color/violet_600"
+                    app:tint="@color/white"
                     app:elevation="4dp"
                     android:contentDescription="@string/remove_image"/>
             </FrameLayout>
@@ -96,10 +97,10 @@
         android:layout_centerHorizontal="true"
         android:layout_marginTop="16dp"
         android:text="@string/add_image"
-        android:textColor="@color/primaryLight"
+        android:textColor="@color/white"
         app:icon="@drawable/ic_add_photo"
-        app:iconTint="@color/primaryLight"
-        app:backgroundTint="@color/grey_dark"
+        app:iconTint="@color/white"
+        app:backgroundTint="@color/surface_elevated"
         app:elevation="0dp"/>
 
     <!-- Post button -->
@@ -110,9 +111,9 @@
         android:layout_alignParentBottom="true"
         android:text="@string/post_status"
         android:textAllCaps="false"
-        android:textColor="@color/primaryLight"
+        android:textColor="@color/white"
         android:textSize="16sp"
-        android:backgroundTint="@color/grey_dark"
+        android:backgroundTint="@color/violet_600"
         app:cornerRadius="24dp"
         app:elevation="0dp"
         style="@style/Widget.Material3.Button.ElevatedButton"/>
