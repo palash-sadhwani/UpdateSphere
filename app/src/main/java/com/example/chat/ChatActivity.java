@@ -20,24 +20,15 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.bumptech.glide.Glide;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.firestore.DocumentChange;
-import com.google.firebase.firestore.DocumentReference;
 import com.google.firebase.firestore.DocumentSnapshot;
-import com.google.firebase.firestore.EventListener;
-import com.google.firebase.firestore.FieldValue;
-import com.google.firebase.firestore.FirebaseFirestore;
 import com.google.firebase.firestore.FirebaseFirestoreException;
 import com.google.firebase.firestore.ListenerRegistration;
-import com.google.firebase.firestore.Query;
 import com.google.firebase.firestore.QuerySnapshot;
-import com.google.firebase.firestore.SetOptions;
-import com.google.firebase.firestore.WriteBatch;
 
+import com.example.chat.data.repository.ChatRepository;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Date;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 import de.hdodenhof.circleimageview.CircleImageView;
 
@@ -47,7 +38,7 @@ public class ChatActivity extends AppCompatActivity {
     private ImageButton sendButton, attachButton, emojiButton, voiceButton;
     private List<Message> messages = new ArrayList<>();
     private ChatAdapter chatAdapter;
-    private FirebaseFirestore db = FirebaseFirestore.getInstance();
+    private ChatRepository chatRepository;
     private String currentUserId, receiverId, chatId;
     private TextView chatName, chatStatus;
     private CircleImageView chatAvatar;
@@ -58,6 +49,7 @@ public class ChatActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_chat);
 
+        chatRepository = new ChatRepository();
         initializeViews();
         setupUserData();
         setupRecyclerView();
@@ -85,8 +77,7 @@ public class ChatActivity extends AppCompatActivity {
         receiverId = getIntent().getStringExtra("receiverId");
         chatId = generateChatId(currentUserId, receiverId);
 
-        db.collection("users").document(receiverId)
-                .addSnapshotListener((snapshot, error) -> {
+        chatListener = chatRepository.observeChatUser(receiverId, (snapshot, error) -> {
                     if (error != null) {
                         Log.e("ChatActivity", "Listen failed", error);
                         return;
@@ -202,10 +193,7 @@ public class ChatActivity extends AppCompatActivity {
 //                });
 //    }
 private void loadMessages() {
-    messagesListener = db.collection("chats").document(chatId)
-            .collection("messages")
-            .orderBy("timestamp", Query.Direction.ASCENDING)
-            .addSnapshotListener((snapshots, error) -> {
+    messagesListener = chatRepository.observeMessages(chatId, (snapshots, error) -> {
                 if (error != null) return;
 
                 for (DocumentChange dc : snapshots.getDocumentChanges()) {
@@ -247,12 +235,7 @@ private void loadMessages() {
         }
     }
     private void markChatAsRead() {
-        Map<String, Object> updates = new HashMap<>();
-        updates.put("readStatus." + currentUserId, true);
-        updates.put("unreadCount", 0); // Reset unread count
-
-        db.collection("chats").document(chatId)
-                .update(updates)
+        chatRepository.markChatAsRead(chatId, currentUserId)
                 .addOnFailureListener(e -> Log.e("ChatActivity", "Error marking chat as read", e));
     }
 
@@ -300,10 +283,7 @@ private void markMessageAsRead(Message message) {
         return;
     }
 
-    // Update in Firestore
-    db.collection("chats").document(chatId)
-            .collection("messages").document(message.getMessageId())
-            .update("status", Message.STATUS_READ)
+    chatRepository.markMessageAsRead(chatId, message.getMessageId())
             .addOnSuccessListener(aVoid -> {
                 // Update local message
                 message.markAsRead();
@@ -321,9 +301,7 @@ private void markMessageAsRead(Message message) {
         }
 
         // Also update chat-level read status
-        db.collection("chats").document(chatId)
-                .update("readStatus." + currentUserId, true,
-                        "unreadCount", 0);
+        chatRepository.markChatAsRead(chatId, currentUserId);
     }
 
     private void sendMessage() {
@@ -335,40 +313,10 @@ private void markMessageAsRead(Message message) {
         message.setTimestamp(new Date(System.currentTimeMillis()));
         message.setStatus(Message.STATUS_SENT);
 
-        // Create batch operation
-        WriteBatch batch = db.batch();
-
-        // First, ensure the chat document exists
-        DocumentReference chatRef = db.collection("chats").document(chatId);
-        batch.set(chatRef,
-                new HashMap<String, Object>() {{
-                    put("participants", Arrays.asList(currentUserId, receiverId));
-                    put("lastMessage", "");
-                    put("timestamp", FieldValue.serverTimestamp());
-                }},
-                SetOptions.merge() // Only update fields that are specified
-        );
-
-        // Add message to subcollection
-        DocumentReference messageRef = chatRef.collection("messages").document();
-        message.setMessageId(messageRef.getId());
-        batch.set(messageRef, message);
-
-        // Update chat document with latest message info
-        Map<String, Object> chatUpdates = new HashMap<>();
-        chatUpdates.put("lastMessage", content);
-        chatUpdates.put("lastMessageSenderId", currentUserId);
-        chatUpdates.put("timestamp", FieldValue.serverTimestamp());
-        chatUpdates.put("readStatus." + receiverId, false);
-        chatUpdates.put("unreadCount", FieldValue.increment(1));
-
-        batch.update(chatRef, chatUpdates);
-
-        // Commit batch
-        batch.commit()
-                .addOnSuccessListener(aVoid -> {
+        chatRepository.sendMessage(chatId, currentUserId, receiverId, message)
+                .addOnSuccessListener(messageId -> {
                     messageInput.setText("");
-                    updateMessageStatus(messageRef.getId(), true, false);
+                    updateMessageStatus(messageId, true, false);
                     scrollToBottom();
                 })
                 .addOnFailureListener(e -> {
@@ -377,18 +325,7 @@ private void markMessageAsRead(Message message) {
                 });
     }
     private void updateMessageStatus(String messageId, boolean isDelivered, boolean isRead) {
-        Map<String, Object> updates = new HashMap<>();
-        if (isRead) {
-            updates.put("status", Message.STATUS_READ);
-        } else if (isDelivered) {
-            updates.put("status", Message.STATUS_DELIVERED);
-        } else {
-            updates.put("status", Message.STATUS_SENT);
-        }
-
-        db.collection("chats").document(chatId)
-                .collection("messages").document(messageId)
-                .update(updates)
+        chatRepository.updateMessageStatus(chatId, messageId, isDelivered, isRead)
                 .addOnFailureListener(e -> Log.e("ChatActivity", "Error updating status", e));
     }
 
