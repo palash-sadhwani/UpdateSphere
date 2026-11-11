@@ -10,28 +10,34 @@ import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ProgressBar;
 import android.widget.Toast;
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
-import com.google.firebase.auth.FirebaseAuth;
-import com.google.firebase.firestore.FirebaseFirestore;
-import java.util.HashMap;
-import java.util.Map;
+import androidx.lifecycle.ViewModelProvider;
+
+import com.example.chat.data.repository.AuthRepository;
+import com.example.chat.presentation.auth.AuthViewModel;
 
 public class RegisterActivity extends AppCompatActivity {
 
     private EditText nameInput, emailInput, passwordInput, confirmPasswordInput;
     private Button registerButton, loginButton;
     private ProgressBar progressBar;
-    private FirebaseAuth mAuth;
-    private FirebaseFirestore firestore;
+    private AuthRepository authRepository;
+    private AuthViewModel authViewModel;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_register);
 
-        // Initialize Firebase instances
-        mAuth = FirebaseAuth.getInstance();
-        firestore = FirebaseFirestore.getInstance();
+        authRepository = new AuthRepository();
+        authViewModel = new ViewModelProvider(this, new ViewModelProvider.Factory() {
+            @NonNull
+            @Override
+            public <T extends androidx.lifecycle.ViewModel> T create(@NonNull Class<T> modelClass) {
+                return modelClass.cast(new AuthViewModel(authRepository));
+            }
+        }).get(AuthViewModel.class);
 
         // Initialize views
         nameInput = findViewById(R.id.nameInput);
@@ -41,6 +47,7 @@ public class RegisterActivity extends AppCompatActivity {
         registerButton = findViewById(R.id.registerButton);
         loginButton = findViewById(R.id.loginButton);
         progressBar = findViewById(R.id.progressBar);
+        authViewModel.getAuthState().observe(this, this::handleAuthState);
 
         // Set click listeners
         registerButton.setOnClickListener(v -> registerUser());
@@ -90,63 +97,9 @@ public class RegisterActivity extends AppCompatActivity {
             return;
         }
 
-        // Show progress bar
         progressBar.setVisibility(View.VISIBLE);
         registerButton.setEnabled(false);
-
-        // Create user with Firebase Auth
-        mAuth.createUserWithEmailAndPassword(email, password)
-                .addOnCompleteListener(task -> {
-                    if (task.isSuccessful()) {
-                        // User created successfully
-                        String userId = mAuth.getCurrentUser().getUid();
-
-                        // Create user document in Firestore
-                        Map<String, Object> user = new HashMap<>();
-                        user.put("name", name);
-                        user.put("email", email);
-                        user.put("userId", userId);
-                        user.put("status", "Hey there! I'm using WhatsApp Clone");
-                        user.put("online", false);
-                        user.put("lastSeen", System.currentTimeMillis());
-                        user.put("profileImage", ""); // Default empty, user can set later
-
-                        firestore.collection("users").document(userId)
-                                .set(user)
-                                .addOnSuccessListener(aVoid -> {
-                                    // Send email verification
-                                    mAuth.getCurrentUser().sendEmailVerification()
-                                            .addOnCompleteListener(emailTask -> {
-                                                progressBar.setVisibility(View.GONE);
-                                                if (emailTask.isSuccessful()) {
-                                                    Toast.makeText(RegisterActivity.this,
-                                                            "Registration successful! Please verify your email.",
-                                                            Toast.LENGTH_LONG).show();
-                                                    navigateToLogin();
-                                                } else {
-                                                    Toast.makeText(RegisterActivity.this,
-                                                            "Registration successful but failed to send verification email: " +
-                                                                    emailTask.getException().getMessage(),
-                                                            Toast.LENGTH_LONG).show();
-                                                }
-                                            });
-                                })
-                                .addOnFailureListener(e -> {
-                                    progressBar.setVisibility(View.GONE);
-                                    registerButton.setEnabled(true);
-                                    Toast.makeText(RegisterActivity.this,
-                                            "Failed to create user profile: " + e.getMessage(),
-                                            Toast.LENGTH_LONG).show();
-                                });
-                    } else {
-                        // Registration failed
-                        progressBar.setVisibility(View.GONE);
-                        registerButton.setEnabled(true);
-                        Toast.makeText(RegisterActivity.this,
-                                "Registration failed: " + task.getException().getMessage(),
-                                Toast.LENGTH_LONG).show();
-                    }
-                });
+        authViewModel.register(name, email, password);
     }
 
     private void navigateToLogin() {
@@ -158,9 +111,26 @@ public class RegisterActivity extends AppCompatActivity {
     protected void onStart() {
         super.onStart();
         // If user is already logged in, go to main activity
-        if (mAuth.getCurrentUser() != null && mAuth.getCurrentUser().isEmailVerified()) {
+        if (authRepository.isCurrentUserEmailVerified()) {
             startActivity(new Intent(RegisterActivity.this, MainActivity.class));
             finish();
+        }
+    }
+
+    private void handleAuthState(AuthViewModel.AuthState state) {
+        if (state.getStatus() == AuthViewModel.Status.LOADING) {
+            progressBar.setVisibility(View.VISIBLE);
+            registerButton.setEnabled(false);
+        } else {
+            progressBar.setVisibility(View.GONE);
+        }
+
+        if (state.getStatus() == AuthViewModel.Status.SUCCESS) {
+            Toast.makeText(this, state.getMessage(), Toast.LENGTH_LONG).show();
+            navigateToLogin();
+        } else if (state.getStatus() == AuthViewModel.Status.ERROR) {
+            registerButton.setEnabled(true);
+            Toast.makeText(this, state.getMessage(), Toast.LENGTH_LONG).show();
         }
     }
 }

@@ -12,11 +12,11 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
 import androidx.fragment.app.Fragment;
 
+import com.example.chat.data.repository.AuthRepository;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.google.android.material.navigation.NavigationBarView;
 import com.google.firebase.FirebaseApp;
-import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
 import com.google.firebase.firestore.FirebaseFirestore;
 import com.cloudinary.android.MediaManager;
@@ -25,7 +25,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class MainActivity extends AppCompatActivity {
-    private FirebaseAuth mAuth;
+    private AuthRepository authRepository;
     private BottomNavigationView bottomNavigation;
     private Toolbar toolbar;
     private FloatingActionButton fab;
@@ -39,7 +39,13 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
         FirebaseApp.initializeApp(this);
         db = FirebaseFirestore.getInstance();
-        currentUserId = FirebaseAuth.getInstance().getCurrentUser().getUid();
+        authRepository = new AuthRepository();
+        FirebaseUser currentUser = authRepository.getCurrentUser();
+        if (currentUser == null) {
+            redirectToLogin();
+            return;
+        }
+        currentUserId = currentUser.getUid();
 
         // Initialize Cloudinary
         try {
@@ -56,12 +62,6 @@ public class MainActivity extends AppCompatActivity {
             Toast.makeText(this, "Media uploads unavailable", Toast.LENGTH_SHORT).show();
         }
 
-        mAuth = FirebaseAuth.getInstance();
-
-        if (mAuth.getCurrentUser() == null) {
-            redirectToLogin();
-            return;
-        }
 //        startActivity(new Intent(this, UserActivity.class));
 
         // Initialize views
@@ -119,17 +119,17 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void logoutUser() {
-        FirebaseUser currentUser = mAuth.getCurrentUser();
+        FirebaseUser currentUser = authRepository.getCurrentUser();
         if (currentUser != null) {
             FirebaseFirestore.getInstance().collection("users")
                     .document(currentUser.getUid())
                     .update("online", false, "lastSeen", System.currentTimeMillis())
                     .addOnCompleteListener(task -> {
-                        mAuth.signOut();
+                        authRepository.logout();
                         redirectToLogin();
                     });
         } else {
-            mAuth.signOut();
+            authRepository.logout();
             redirectToLogin();
         }
     }

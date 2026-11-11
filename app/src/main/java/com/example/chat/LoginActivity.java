@@ -10,14 +10,19 @@ import android.widget.EditText;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
-import com.google.firebase.auth.FirebaseAuth;
+import androidx.lifecycle.ViewModelProvider;
+
+import com.example.chat.data.repository.AuthRepository;
+import com.example.chat.presentation.auth.AuthViewModel;
 
 public class LoginActivity extends AppCompatActivity {
     private EditText emailInput, passwordInput;
     private Button loginButton, signupButton;
     private ProgressBar progressBar;
     private TextView forgotPassword;
+    private AuthViewModel authViewModel;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -30,6 +35,15 @@ public class LoginActivity extends AppCompatActivity {
         signupButton = findViewById(R.id.signupButton);
         progressBar = findViewById(R.id.progressBar);
         forgotPassword = findViewById(R.id.forgotPasswordButton);
+
+        authViewModel = new ViewModelProvider(this, new ViewModelProvider.Factory() {
+            @NonNull
+            @Override
+            public <T extends androidx.lifecycle.ViewModel> T create(@NonNull Class<T> modelClass) {
+                return modelClass.cast(new AuthViewModel(new AuthRepository()));
+            }
+        }).get(AuthViewModel.class);
+        authViewModel.getAuthState().observe(this, this::handleAuthState);
 
         loginButton.setOnClickListener(v -> loginUser());
         signupButton.setOnClickListener(v -> startActivity(new Intent(LoginActivity.this, RegisterActivity.class)));
@@ -51,19 +65,7 @@ public class LoginActivity extends AppCompatActivity {
         }
 
         progressBar.setVisibility(View.VISIBLE);
-
-        FirebaseAuth.getInstance().signInWithEmailAndPassword(email, password)
-                .addOnCompleteListener(task -> {
-                    progressBar.setVisibility(View.GONE);
-                    if (task.isSuccessful()) {
-                        Intent intent = new Intent(LoginActivity.this, MainActivity.class);
-                        startActivity(intent);
-//                        startActivity(new Intent(LoginActivity.this, MainActivity.class));
-                        finish();
-                    } else {
-                        Toast.makeText(LoginActivity.this, "Error: " + task.getException().getMessage(), Toast.LENGTH_SHORT).show();
-                    }
-                });
+        authViewModel.login(email, password);
     }
 
     private void resetPassword() {
@@ -74,13 +76,25 @@ public class LoginActivity extends AppCompatActivity {
             return;
         }
 
-        FirebaseAuth.getInstance().sendPasswordResetEmail(email)
-                .addOnCompleteListener(task -> {
-                    if (task.isSuccessful()) {
-                        Toast.makeText(this, "Password reset email sent", Toast.LENGTH_SHORT).show();
-                    } else {
-                        Toast.makeText(this, "Error: " + task.getException().getMessage(), Toast.LENGTH_SHORT).show();
-                    }
-                });
+        authViewModel.resetPassword(email);
+    }
+
+    private void handleAuthState(AuthViewModel.AuthState state) {
+        if (state.getStatus() == AuthViewModel.Status.LOADING) {
+            progressBar.setVisibility(View.VISIBLE);
+        } else {
+            progressBar.setVisibility(View.GONE);
+        }
+
+        if (state.getStatus() == AuthViewModel.Status.SUCCESS) {
+            if (state.getMessage() != null) {
+                Toast.makeText(this, state.getMessage(), Toast.LENGTH_SHORT).show();
+            } else {
+                startActivity(new Intent(LoginActivity.this, MainActivity.class));
+                finish();
+            }
+        } else if (state.getStatus() == AuthViewModel.Status.ERROR) {
+            Toast.makeText(this, "Error: " + state.getMessage(), Toast.LENGTH_SHORT).show();
+        }
     }
 }
