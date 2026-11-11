@@ -273,14 +273,8 @@ import androidx.recyclerview.widget.RecyclerView;
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
+import com.example.chat.presentation.chat.ChatListViewModel;
 import com.google.firebase.auth.FirebaseAuth;
-import com.google.firebase.firestore.DocumentSnapshot;
-import com.google.firebase.firestore.EventListener;
-import com.google.firebase.firestore.FirebaseFirestore;
-import com.google.firebase.firestore.FirebaseFirestoreException;
-import com.google.firebase.firestore.ListenerRegistration;
-import com.google.firebase.firestore.Query;
-import com.google.firebase.firestore.QuerySnapshot;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -292,28 +286,39 @@ public class ChatsFragment extends Fragment implements ChatListAdapter.OnChatCli
     private ChatListAdapter chatAdapter;
     private List<Chat> chatList = new ArrayList<>();
     private Map<String, User> userMap = new HashMap<>();
-    private FirebaseFirestore firestore;
+    private ChatListViewModel chatListViewModel;
     private String currentUserId;
     private TextView emptyView;
     private SwipeRefreshLayout swipeRefreshLayout;
-    private ListenerRegistration chatsListener;
     private FloatingActionButton fabNewChat;
 
     @Override
     public void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        firestore = FirebaseFirestore.getInstance();
-        currentUserId = FirebaseAuth.getInstance().getCurrentUser().getUid();
+        FirebaseAuth auth = FirebaseAuth.getInstance();
+        if (auth.getCurrentUser() == null) {
+            return;
+        }
+        currentUserId = auth.getCurrentUser().getUid();
 
     }
 
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
         View view = inflater.inflate(R.layout.fragment_chats, container, false);
+        if (currentUserId == null) {
+            if (isAdded()) {
+                requireActivity().finish();
+            }
+            return view;
+        }
         initViews(view);
         setupAdapter();
         setupListeners();
-        loadChats();
+        chatListViewModel = new androidx.lifecycle.ViewModelProvider(this)
+                .get(ChatListViewModel.class);
+        observeChatList();
+        chatListViewModel.start(currentUserId);
         return view;
     }
 
@@ -328,7 +333,7 @@ public class ChatsFragment extends Fragment implements ChatListAdapter.OnChatCli
 
     private void setupListeners() {
         swipeRefreshLayout.setOnRefreshListener(() -> {
-            loadChats();
+            chatListViewModel.refresh();
         });
 
         fabNewChat.setOnClickListener(v -> openNewChatActivity());
@@ -345,72 +350,31 @@ public class ChatsFragment extends Fragment implements ChatListAdapter.OnChatCli
         chatsRecyclerView.setAdapter(chatAdapter);
     }
 
-    private void loadChats() {
-        if (chatsListener != null) {
-            chatsListener.remove();
-        }
+    private void observeChatList() {
+        chatListViewModel.getState().observe(getViewLifecycleOwner(), state -> {
+            chatList.clear();
+            chatList.addAll(state.getChats());
+            userMap.clear();
+            userMap.putAll(state.getUsers());
+            chatAdapter.notifyDataSetChanged();
 
-        swipeRefreshLayout.setRefreshing(true);
+            if (state.getStatus() == ChatListViewModel.Status.LOADING) {
+                swipeRefreshLayout.setRefreshing(true);
+            } else {
+                swipeRefreshLayout.setRefreshing(false);
+            }
 
-        chatsListener = firestore.collection("chats")
-                .whereArrayContains("participants", currentUserId)
-                .orderBy("timestamp", Query.Direction.DESCENDING)
-                .addSnapshotListener((value, error) -> {
-                    swipeRefreshLayout.setRefreshing(false);
-
-                    if (error != null) {
-                        showEmptyView(true, "Error loading chats");
-                        Log.e("ChatsFragment", "Error loading chats", error);
-                        return;
-                    }
-
-                    if (value != null && !value.isEmpty()) {
-                        List<Chat> tempList = new ArrayList<>();
-                        Map<String, User> newUserMap = new HashMap<>();
-
-                        for (DocumentSnapshot snapshot : value.getDocuments()) {
-                            try {
-                                Chat chat = snapshot.toObject(Chat.class);
-                                if (chat != null) {
-                                    chat.setChatId(snapshot.getId());
-                                    tempList.add(chat);
-
-                                    // Load user data for participants
-                                    for (String participantId : chat.getParticipants()) {
-                                        if (!participantId.equals(currentUserId) && !newUserMap.containsKey(participantId)) {
-                                            firestore.collection("users").document(participantId).get()
-                                                    .addOnSuccessListener(userSnapshot -> {
-                                                        if (userSnapshot.exists()) {
-                                                            User user = userSnapshot.toObject(User.class);
-                                                            if (user != null) {
-                                                                newUserMap.put(participantId, user);
-                                                                // Update adapter if this is the last user
-                                                                if (newUserMap.size() >= tempList.stream()
-                                                                        .mapToInt(c -> c.getParticipants().size() - 1)
-                                                                        .sum()) {
-                                                                    userMap.clear();
-                                                                    userMap.putAll(newUserMap);
-                                                                    chatAdapter.notifyDataSetChanged();
-                                                                }
-                                                            }
-                                                        }
-                                                    });
-                                        }
-                                    }
-                                }
-                            } catch (Exception e) {
-                                Log.e("ChatsFragment", "Error parsing chat", e);
-                            }
-                        }
-
-                        chatList.clear();
-                        chatList.addAll(tempList);
-                        updateEmptyView();
-                        chatAdapter.notifyDataSetChanged();
-                    } else {
-                        showEmptyView(true, "No chats available");
-                    }
-                });
+            if (state.getStatus() == ChatListViewModel.Status.ERROR) {
+                if (state.getErrorEvent() != null
+                        && state.getErrorEvent().getContentIfNotHandled() != null) {
+                    showEmptyView(true, state.getErrorMessage());
+                }
+            } else if (state.getChats().isEmpty()) {
+                showEmptyView(true, "No chats available");
+            } else {
+                updateEmptyView();
+            }
+        });
     }
 
 
@@ -432,27 +396,6 @@ public class ChatsFragment extends Fragment implements ChatListAdapter.OnChatCli
 //
 //    }
 //}
-private void loadUserData(String userId) {
-    if (userMap.containsKey(userId)) return;
-
-    firestore.collection("users").document(userId)
-            .get()
-            .addOnSuccessListener(documentSnapshot -> {
-                if (documentSnapshot.exists()) {
-                    User user = documentSnapshot.toObject(User.class);
-                    if (user != null) {
-                        userMap.put(userId, user);
-                        chatAdapter.notifyDataSetChanged();
-
-                    }
-                }
-            })
-            .addOnFailureListener(e -> {
-                Log.e("ChatsFragment", "Error loading user data", e);
-            });
-}
-
-
     private void showEmptyView(boolean show, String message) {
         if (emptyView != null) {
             emptyView.setVisibility(show ? View.VISIBLE : View.GONE);
@@ -491,8 +434,5 @@ private void loadUserData(String userId) {
     @Override
     public void onDestroyView() {
         super.onDestroyView();
-        if (chatsListener != null) {
-            chatsListener.remove();
-        }
     }
 }

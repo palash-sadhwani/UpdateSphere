@@ -28,6 +28,7 @@ import com.google.android.material.switchmaterial.SwitchMaterial;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.firestore.DocumentSnapshot;
 import com.google.firebase.firestore.FirebaseFirestore;
+import com.google.firebase.firestore.ListenerRegistration;
 
 import org.osmdroid.config.Configuration;
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory;
@@ -50,10 +51,12 @@ public class LocationFragment extends Fragment {
     private LocationRequest locationRequest;
     private static final int LOCATION_PERMISSION_REQUEST_CODE = 1001;
     private boolean isSharingLocation = false;
+    private boolean locationUpdatesActive = false;
     private SwitchMaterial locationSwitch;
     private Map<String, Marker> friendMarkers = new HashMap<>();
     private MyLocationNewOverlay myLocationOverlay;
     private FloatingActionButton fabCenter;
+    private ListenerRegistration friendLocationsListener;
 
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container,
@@ -107,11 +110,11 @@ public class LocationFragment extends Fragment {
         if (checkLocationPermission()) {
             fusedLocationClient.getLastLocation()
                     .addOnSuccessListener(location -> {
-                        if (location != null) {
+                        if (location != null && isAdded() && getView() != null && map != null) {
                             GeoPoint currentGeoPoint = new GeoPoint(location.getLatitude(), location.getLongitude());
                             map.getController().animateTo(currentGeoPoint);
                             map.getController().setZoom(15.0);
-                        } else {
+                        } else if (location == null && isAdded() && getView() != null) {
                             Toast.makeText(getContext(), "Location not available", Toast.LENGTH_SHORT).show();
                         }
                     });
@@ -121,9 +124,10 @@ public class LocationFragment extends Fragment {
     }
 
     private void stopLocationUpdates() {
-        if (locationCallback != null) {
+        if (locationCallback != null && fusedLocationClient != null) {
             fusedLocationClient.removeLocationUpdates(locationCallback);
         }
+        locationUpdatesActive = false;
     }
 
     private void setupLocationSwitch() {
@@ -175,8 +179,14 @@ public class LocationFragment extends Fragment {
 
     @SuppressLint("MissingPermission")
     private void startLocationUpdates() {
+        if (locationUpdatesActive || !isAdded() || getView() == null
+                || fusedLocationClient == null || !checkLocationPermission()) {
+            return;
+        }
+
         createLocationRequest();
         createLocationCallback();
+        locationUpdatesActive = true;
         fusedLocationClient.requestLocationUpdates(locationRequest,
                 locationCallback,
                 Looper.getMainLooper());
@@ -196,7 +206,9 @@ public class LocationFragment extends Fragment {
         locationCallback = new LocationCallback() {
             @Override
             public void onLocationResult(LocationResult locationResult) {
-                if (locationResult == null) return;
+                if (locationResult == null || !isAdded() || getView() == null || map == null) {
+                    return;
+                }
                 for (android.location.Location location : locationResult.getLocations()) {
                     GeoPoint currentGeoPoint = new GeoPoint(location.getLatitude(), location.getLongitude());
                     map.getController().animateTo(currentGeoPoint);
@@ -210,7 +222,7 @@ public class LocationFragment extends Fragment {
     private void getLastKnownLocation() {
         fusedLocationClient.getLastLocation()
                 .addOnSuccessListener(location -> {
-                    if (location != null) {
+                    if (location != null && isAdded() && getView() != null && map != null) {
                         GeoPoint currentGeoPoint = new GeoPoint(location.getLatitude(), location.getLongitude());
                         map.getController().setCenter(currentGeoPoint);
                         map.getController().setZoom(15.0);
@@ -222,7 +234,12 @@ public class LocationFragment extends Fragment {
     }
 
     private void saveUserLocation(GeoPoint geoPoint) {
-        String userId = FirebaseAuth.getInstance().getCurrentUser().getUid();
+        FirebaseAuth auth = FirebaseAuth.getInstance();
+        if (auth.getCurrentUser() == null || !isAdded() || getView() == null) {
+            return;
+        }
+
+        String userId = auth.getCurrentUser().getUid();
         com.google.firebase.firestore.GeoPoint firestoreGeoPoint =
                 new com.google.firebase.firestore.GeoPoint(geoPoint.getLatitude(), geoPoint.getLongitude());
 
@@ -230,23 +247,33 @@ public class LocationFragment extends Fragment {
         userLocation.setUserId(userId);
         userLocation.setGeoPoint(firestoreGeoPoint);
         userLocation.setTimestamp(System.currentTimeMillis());
-        userLocation.setUserName(FirebaseAuth.getInstance().getCurrentUser().getDisplayName());
+        userLocation.setUserName(auth.getCurrentUser().getDisplayName());
 
         FirebaseFirestore.getInstance().collection("user_locations")
                 .document(userId)
                 .set(userLocation)
                 .addOnFailureListener(e -> {
-                    Toast.makeText(getContext(), "Failed to update location", Toast.LENGTH_SHORT).show();
+                    if (isAdded() && getView() != null) {
+                        Toast.makeText(getContext(), "Failed to update location", Toast.LENGTH_SHORT).show();
+                    }
                 });
     }
 
 
 
     private void loadFriendsLocations() {
-        FirebaseFirestore.getInstance().collection("user_locations")
+        if (friendLocationsListener != null || !isAdded() || getView() == null) {
+            return;
+        }
+
+        friendLocationsListener = FirebaseFirestore.getInstance().collection("user_locations")
                 .addSnapshotListener((value, error) -> {
+                    if (!isAdded() || getView() == null || map == null) {
+                        return;
+                    }
+
                     if (error != null) {
-                        if (isAdded() && getContext() != null) {
+                        if (getContext() != null) {
                             Toast.makeText(requireContext(), "Error loading locations", Toast.LENGTH_SHORT).show();
                         }
                         Log.e("LocationFragment", "Error loading locations", error);
@@ -266,7 +293,8 @@ public class LocationFragment extends Fragment {
 
                     for (DocumentSnapshot doc : value.getDocuments()) {
                         UserLocation location = doc.toObject(UserLocation.class);
-                        if (location != null && !location.getUserId().equals(currentUserId)) {
+                        if (location != null && location.getUserId() != null
+                                && !location.getUserId().equals(currentUserId)) {
                             addFriendMarker(location);
                         }
                     }
@@ -275,6 +303,10 @@ public class LocationFragment extends Fragment {
     }
 private void addFriendMarker(UserLocation location) {
     try {
+        if (!isAdded() || getView() == null || map == null || location.getGeoPoint() == null) {
+            return;
+        }
+
         com.google.firebase.firestore.GeoPoint geoPoint = location.getGeoPoint();
         GeoPoint osmGeoPoint = new GeoPoint(geoPoint.getLatitude(), geoPoint.getLongitude());
 
@@ -320,8 +352,12 @@ private void addFriendMarker(UserLocation location) {
                     startLocationUpdates();
                 }
             } else {
-                locationSwitch.setChecked(false);
-                Toast.makeText(getContext(), "Location permission required", Toast.LENGTH_SHORT).show();
+                if (locationSwitch != null) {
+                    locationSwitch.setChecked(false);
+                }
+                if (isAdded() && getView() != null) {
+                    Toast.makeText(getContext(), "Location permission required", Toast.LENGTH_SHORT).show();
+                }
             }
         }
     }
@@ -347,15 +383,28 @@ private void addFriendMarker(UserLocation location) {
         stopLocationUpdates();
     }
 
+    @Override
+    public void onDestroyView() {
+        stopLocationUpdates();
+        if (friendLocationsListener != null) {
+            friendLocationsListener.remove();
+            friendLocationsListener = null;
+        }
+        super.onDestroyView();
+    }
+
     private void removeUserLocationFromFirestore() {
-        String userId = FirebaseAuth.getInstance().getCurrentUser() != null ?
-                FirebaseAuth.getInstance().getCurrentUser().getUid() : "";
+        FirebaseAuth auth = FirebaseAuth.getInstance();
+        String userId = auth.getCurrentUser() != null ?
+                auth.getCurrentUser().getUid() : "";
         if (!userId.isEmpty()) {
             FirebaseFirestore.getInstance().collection("user_locations")
                     .document(userId)
                     .delete()
                     .addOnFailureListener(e -> {
-                        Toast.makeText(getContext(), "Failed to stop sharing location", Toast.LENGTH_SHORT).show();
+                        if (isAdded() && getView() != null) {
+                            Toast.makeText(getContext(), "Failed to stop sharing location", Toast.LENGTH_SHORT).show();
+                        }
                     });
         }
     }
@@ -368,7 +417,8 @@ private void addFriendMarker(UserLocation location) {
                     .document(userId)
                     .get()
                     .addOnCompleteListener(task -> {
-                        if (!isAdded() || getContext() == null) {
+                        if (!isAdded() || getContext() == null
+                                || getView() == null || locationSwitch == null) {
                             return;
                         }
 

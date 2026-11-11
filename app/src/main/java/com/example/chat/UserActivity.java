@@ -11,10 +11,8 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 
+import com.example.chat.presentation.user.UserViewModel;
 import com.google.firebase.auth.FirebaseAuth;
-import com.google.firebase.firestore.DocumentSnapshot;
-import com.google.firebase.firestore.FirebaseFirestore;
-import com.google.firebase.firestore.Query;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -23,10 +21,11 @@ public class UserActivity extends AppCompatActivity implements UserAdapter.OnUse
     private RecyclerView userRecyclerView;
     private UserAdapter userAdapter;
     private List<User> userList = new ArrayList<>();
-    private FirebaseFirestore db = FirebaseFirestore.getInstance();
+    private UserViewModel userViewModel;
     private TextView emptyView;
     private SearchView searchView;
     private SwipeRefreshLayout swipeRefreshLayout;
+    private String currentUserId;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -39,15 +38,26 @@ public class UserActivity extends AppCompatActivity implements UserAdapter.OnUse
         searchView = findViewById(R.id.searchView);
         swipeRefreshLayout = findViewById(R.id.swipeRefreshLayout);
 
+        FirebaseAuth auth = FirebaseAuth.getInstance();
+        if (auth.getCurrentUser() == null) {
+            finish();
+            return;
+        }
+        currentUserId = auth.getCurrentUser().getUid();
+
         // Setup RecyclerView
         userRecyclerView.setLayoutManager(new LinearLayoutManager(this));
         userAdapter = new UserAdapter(this, userList, this);
         userRecyclerView.setAdapter(userAdapter);
 
+        userViewModel = new androidx.lifecycle.ViewModelProvider(this)
+                .get(UserViewModel.class);
+        observeUsers();
+
         // Setup search and refresh
         setupSearchView();
         setupRefreshLayout();
-        loadUsers();
+        userViewModel.start(currentUserId);
     }
 
     private void setupSearchView() {
@@ -69,35 +79,23 @@ public class UserActivity extends AppCompatActivity implements UserAdapter.OnUse
 
     private void setupRefreshLayout() {
         swipeRefreshLayout.setOnRefreshListener(() -> {
-            loadUsers();
+            userViewModel.refresh();
             swipeRefreshLayout.setRefreshing(false);
         });
     }
 
-    private void loadUsers() {
-        String currentUserId = FirebaseAuth.getInstance().getCurrentUser().getUid();
+    private void observeUsers() {
+        userViewModel.getUsers().observe(this, users -> {
+            userList = new ArrayList<>(users);
+            userAdapter.updateList(userList);
+            showEmptyView(userList.isEmpty(), "No users found");
+        });
 
-        db.collection("users")
-                .orderBy("name", Query.Direction.ASCENDING)
-                .addSnapshotListener((value, error) -> {
-                    if (error != null) {
-                        showEmptyView(true, "Error loading users");
-                        return;
-                    }
-
-                    userList.clear();
-                    if (value != null) {
-                        for (DocumentSnapshot doc : value.getDocuments()) {
-                            User user = doc.toObject(User.class);
-                            if (user != null && !user.getUserId().equals(currentUserId)) {
-                                userList.add(user);
-                            }
-                        }
-                    }
-
-                    userAdapter.updateList(userList);
-                    showEmptyView(userList.isEmpty(), "No users found");
-                });
+        userViewModel.getState().observe(this, state -> {
+            if (state.getStatus() == UserViewModel.Status.ERROR) {
+                showEmptyView(true, state.getErrorMessage());
+            }
+        });
     }
 
     private void showEmptyView(boolean show, String message) {
@@ -111,4 +109,5 @@ public class UserActivity extends AppCompatActivity implements UserAdapter.OnUse
         intent.putExtra("receiverId", user.getUserId());
         startActivity(intent);
     }
+
 }

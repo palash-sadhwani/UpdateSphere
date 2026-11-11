@@ -121,9 +121,10 @@ public class MainActivity extends AppCompatActivity {
     private void logoutUser() {
         FirebaseUser currentUser = authRepository.getCurrentUser();
         if (currentUser != null) {
+            lastPresenceState = false;
             FirebaseFirestore.getInstance().collection("users")
                     .document(currentUser.getUid())
-                    .update("online", false, "lastSeen", System.currentTimeMillis())
+                    .update("isOnline", false, "lastSeen", System.currentTimeMillis())
                     .addOnCompleteListener(task -> {
                         authRepository.logout();
                         redirectToLogin();
@@ -169,17 +170,6 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @Override
-    protected void onResume() {
-        super.onResume();
-        setOnlineStatus(true);
-    }
-
-    @Override
-    protected void onPause() {
-        super.onPause();
-        setOnlineStatus(false);
-    }
-    @Override
     protected void onStart() {
         super.onStart();
         setOnlineStatus(true); // User comes online
@@ -191,8 +181,12 @@ public class MainActivity extends AppCompatActivity {
         setOnlineStatus(false); // User goes offline
     }
 
+    private Boolean lastPresenceState;
+
     private void setOnlineStatus(boolean isOnline) {
-        if (currentUserId != null) {
+        if (currentUserId != null
+                && (lastPresenceState == null || lastPresenceState != isOnline)) {
+            lastPresenceState = isOnline;
             Map<String, Object> status = new HashMap<>();
             status.put("isOnline", isOnline);
             if (!isOnline) {

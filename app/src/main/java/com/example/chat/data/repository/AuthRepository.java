@@ -48,7 +48,7 @@ public class AuthRepository {
                     userData.put("email", email);
                     userData.put("userId", user.getUid());
                     userData.put("status", "Hey there! I'm using WhatsApp Clone");
-                    userData.put("online", false);
+                    userData.put("isOnline", false);
                     userData.put("lastSeen", System.currentTimeMillis());
                     userData.put("profileImage", "");
 

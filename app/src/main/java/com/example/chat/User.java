@@ -1,7 +1,6 @@
 package com.example.chat;
 
-
-
+import com.google.firebase.firestore.PropertyName;
 
 public class User {
     private String userId;
@@ -9,7 +8,7 @@ public class User {
     private String email;
     private String profileImage;
     private String status;
-    private boolean online;
+    @PropertyName("isOnline")
     private boolean isOnline;
     private long lastSeen;
 
@@ -22,7 +21,7 @@ public class User {
         this.email = email;
         this.profileImage = profileImage;
         this.status = status;
-        this.online = false;
+        this.isOnline = false;
         this.lastSeen = System.currentTimeMillis();
     }
 
@@ -67,13 +66,14 @@ public class User {
         this.status = status;
     }
 
+    @PropertyName("isOnline")
     public boolean isOnline() {
-        return online;
+        return isOnline;
     }
 
-
+    @PropertyName("isOnline")
     public void setOnline(boolean online) {
-        this.online = online;
+        this.isOnline = online;
     }
 
     public long getLastSeen() {
@@ -85,7 +85,7 @@ public class User {
     }
 
     public String getFormattedLastSeen() {
-        if (online) {
+        if (isOnline) {
             return "Online";
         } else {
             return "Last seen " + android.text.format.DateFormat.format("hh:mm a", lastSeen);
