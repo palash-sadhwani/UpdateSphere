@@ -11,23 +11,19 @@ import android.widget.ImageButton;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import androidx.annotation.Nullable;
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
+import androidx.lifecycle.ViewModelProvider;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.bumptech.glide.Glide;
-import com.google.firebase.auth.FirebaseAuth;
-import com.google.firebase.firestore.DocumentChange;
-import com.google.firebase.firestore.DocumentSnapshot;
-import com.google.firebase.firestore.FirebaseFirestoreException;
-import com.google.firebase.firestore.ListenerRegistration;
-import com.google.firebase.firestore.QuerySnapshot;
-
 import com.example.chat.data.repository.ChatRepository;
+import com.example.chat.presentation.chat.ChatViewModel;
+import com.google.firebase.auth.FirebaseAuth;
+
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.List;
 
 import de.hdodenhof.circleimageview.CircleImageView;
@@ -38,24 +34,29 @@ public class ChatActivity extends AppCompatActivity {
     private ImageButton sendButton, attachButton, emojiButton, voiceButton;
     private List<Message> messages = new ArrayList<>();
     private ChatAdapter chatAdapter;
-    private ChatRepository chatRepository;
+    private ChatViewModel chatViewModel;
     private String currentUserId, receiverId, chatId;
     private TextView chatName, chatStatus;
     private CircleImageView chatAvatar;
-    private ListenerRegistration messagesListener, chatListener;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_chat);
 
-        chatRepository = new ChatRepository();
+        chatViewModel = new ViewModelProvider(this, new ViewModelProvider.Factory() {
+            @NonNull
+            @Override
+            public <T extends androidx.lifecycle.ViewModel> T create(@NonNull Class<T> modelClass) {
+                return modelClass.cast(new ChatViewModel(new ChatRepository()));
+            }
+        }).get(ChatViewModel.class);
+
         initializeViews();
         setupUserData();
         setupRecyclerView();
+        observeChatState();
         setupListeners();
-        loadMessages();
-        markChatAsRead();
     }
 
     private void initializeViews() {
@@ -73,37 +74,72 @@ public class ChatActivity extends AppCompatActivity {
     }
 
     private void setupUserData() {
+        if (FirebaseAuth.getInstance().getCurrentUser() == null) {
+            finish();
+            return;
+        }
+
         currentUserId = FirebaseAuth.getInstance().getCurrentUser().getUid();
         receiverId = getIntent().getStringExtra("receiverId");
+        if (receiverId == null || receiverId.isEmpty()) {
+            finish();
+            return;
+        }
+
         chatId = generateChatId(currentUserId, receiverId);
+        chatViewModel.startChat(currentUserId, receiverId, chatId);
+        chatViewModel.markChatAsRead();
+    }
 
-        chatListener = chatRepository.observeChatUser(receiverId, (snapshot, error) -> {
-                    if (error != null) {
-                        Log.e("ChatActivity", "Listen failed", error);
-                        return;
-                    }
+    private void observeChatState() {
+        chatViewModel.getChatState().observe(this, state -> {
+            if (state.getStatus() == ChatViewModel.Status.ERROR) {
+                if (state.getErrorMessage() != null) {
+                    Toast.makeText(this, state.getErrorMessage(), Toast.LENGTH_SHORT).show();
+                }
+                return;
+            }
 
-                    if (snapshot != null && snapshot.exists()) {
-                        String name = snapshot.getString("name");
-                        chatName.setText(name != null ? name : "Unknown");
+            messages.clear();
+            messages.addAll(state.getMessages());
+            if (chatAdapter != null) {
+                chatAdapter.notifyDataSetChanged();
+                scrollToBottom();
+            }
+        });
 
-                        Boolean isOnline = snapshot.getBoolean("isOnline");
-                        boolean onlineStatus = isOnline != null ? isOnline : false;
+        chatViewModel.getChatUserState().observe(this, state -> {
+            chatName.setText(state.getName());
+            chatStatus.setText(state.isOnline() ? "online" : "last seen recently");
+            chatStatus.setTextColor(state.isOnline()
+                    ? ContextCompat.getColor(this, R.color.online_green)
+                    : ContextCompat.getColor(this, R.color.offline_gray));
 
-                        chatStatus.setText(onlineStatus ? "online" : "last seen recently");
-                        chatStatus.setTextColor(onlineStatus ?
-                                ContextCompat.getColor(this, R.color.online_green) :
-                                ContextCompat.getColor(this, R.color.offline_gray));
+            if (state.getAvatarUrl() != null && !state.getAvatarUrl().isEmpty()) {
+                Glide.with(this)
+                        .load(state.getAvatarUrl())
+                        .placeholder(R.drawable.default_avatar)
+                        .into(chatAvatar);
+            }
 
-                        String avatarUrl = snapshot.getString("avatarUrl");
-                        if (avatarUrl != null && !avatarUrl.isEmpty()) {
-                            Glide.with(this)
-                                    .load(avatarUrl)
-                                    .placeholder(R.drawable.default_avatar)
-                                    .into(chatAvatar);
-                        }
-                    }
-                });
+            if (state.getErrorMessage() != null) {
+                Log.e("ChatActivity", state.getErrorMessage());
+            }
+        });
+
+        chatViewModel.getSendState().observe(this, state -> {
+            if (!state.consume()) {
+                return;
+            }
+
+            if (state.getStatus() == ChatViewModel.Status.SUCCESS) {
+                messageInput.setText("");
+                scrollToBottom();
+            } else if (state.getStatus() == ChatViewModel.Status.ERROR) {
+                Toast.makeText(this, state.getErrorMessage(), Toast.LENGTH_SHORT).show();
+                Log.e("ChatActivity", "Message send failed: " + state.getErrorMessage());
+            }
+        });
     }
 
     private void setupRecyclerView() {
@@ -118,215 +154,44 @@ public class ChatActivity extends AppCompatActivity {
         sendButton.setOnClickListener(v -> sendMessage());
 
         messageInput.addTextChangedListener(new TextWatcher() {
-            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
-            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+            }
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
                 boolean hasText = s.length() > 0;
                 sendButton.setVisibility(hasText ? View.VISIBLE : View.GONE);
                 voiceButton.setVisibility(hasText ? View.GONE : View.VISIBLE);
             }
-            @Override public void afterTextChanged(Editable s) {}
+
+            @Override
+            public void afterTextChanged(Editable s) {
+            }
         });
 
         attachButton.setOnClickListener(v -> showAttachmentOptions());
         emojiButton.setOnClickListener(v -> toggleEmojiKeyboard());
     }
 
-//    private void loadMessages() {
-//        messagesListener = db.collection("chats").document(chatId)
-//                .collection("messages")
-//                .orderBy("timestamp", Query.Direction.ASCENDING)
-//                .addSnapshotListener((snapshots, error) -> {
-//                    if (error != null) {
-//                        Toast.makeText(this, "Error loading messages", Toast.LENGTH_SHORT).show();
-//                        return;
-//                    }
-//
-//                    for (DocumentChange dc : snapshots.getDocumentChanges()) {
-//                        if (dc.getType() == DocumentChange.Type.ADDED) {
-//                            Message message = dc.getDocument().toObject(Message.class);
-//                            message.setMessageId(dc.getDocument().getId());
-//
-//                            // Add to messages list
-//                            int messageIndex = -1;
-//                            for (int i = 0; i < messages.size(); i++) {
-//                                if (messages.get(i).getMessageId().equals(message.getMessageId())) {
-//                                    messageIndex = i;
-//                                    break;
-//                                }
-//                            }
-//
-//                            if (messageIndex == -1) {
-//                                messages.add(message);
-//                                chatAdapter.notifyItemInserted(messages.size() - 1);
-//                            } else {
-//                                messages.set(messageIndex, message);
-//                                chatAdapter.notifyItemChanged(messageIndex);
-//                            }
-//
-//                            // Mark as read if it's a received message
-//                            // Mark as read if it's a received message
-//                            if (!message.getSenderId().equals(currentUserId)) {
-//                                if (!message.isRead()) {
-//                                    markMessageAsRead(message);
-//                                }
-//
-//                                // Update message status to delivered if not already
-//                                if (!message.isDelivered()) {
-//                                    updateMessageStatus(message.getMessageId(), true, false);
-//                                }
-//                            }
-//                        } else if (dc.getType() == DocumentChange.Type.MODIFIED) {
-//                            Message updatedMessage = dc.getDocument().toObject(Message.class);
-//                            updatedMessage.setMessageId(dc.getDocument().getId());
-//
-//                            // Update existing message
-//                            for (int i = 0; i < messages.size(); i++) {
-//                                if (messages.get(i).getMessageId().equals(updatedMessage.getMessageId())) {
-//                                    messages.set(i, updatedMessage);
-//                                    chatAdapter.notifyItemChanged(i);
-//                                    break;
-//                                }
-//                            }
-//                        }
-//                    }
-//                    scrollToBottom();
-//                });
-//    }
-private void loadMessages() {
-    messagesListener = chatRepository.observeMessages(chatId, (snapshots, error) -> {
-                if (error != null) return;
-
-                for (DocumentChange dc : snapshots.getDocumentChanges()) {
-                    Message message = dc.getDocument().toObject(Message.class);
-                    message.setMessageId(dc.getDocument().getId());
-
-                    switch (dc.getType()) {
-                        case ADDED:
-                            handleNewMessage(message);
-                            break;
-                        case MODIFIED:
-                            handleUpdatedMessage(message);
-                            break;
-                    }
-                }
-                scrollToBottom();
-            });
-}
-
-    private void handleNewMessage(Message message) {
-        // Add to messages list
-        messages.add(message);
-        chatAdapter.notifyItemInserted(messages.size() - 1);
-
-        // Mark as read if received message
-        if (!message.getSenderId().equals(currentUserId) && !message.isRead()) {
-            markMessageAsRead(message);
-        }
-    }
-
-    private void handleUpdatedMessage(Message message) {
-        // Update existing message
-        for (int i = 0; i < messages.size(); i++) {
-            if (messages.get(i).getMessageId().equals(message.getMessageId())) {
-                messages.set(i, message);
-                chatAdapter.notifyItemChanged(i);
-                break;
-            }
-        }
-    }
     private void markChatAsRead() {
-        chatRepository.markChatAsRead(chatId, currentUserId)
-                .addOnFailureListener(e -> Log.e("ChatActivity", "Error marking chat as read", e));
+        chatViewModel.markChatAsRead();
     }
 
-//    private void markMessageAsRead(Message message) {
-//        db.collection("chats").document(chatId)
-//                .collection("messages").document(message.getMessageId())
-//                .update("isRead", true)
-//                .addOnFailureListener(e -> Log.e("ChatActivity", "Error marking message as read", e));
-//    }
-@Override
-protected void onResume() {
-    super.onResume();
-    markChatAsRead();
-    markAllMessagesAsRead();
-
-    // Mark all received messages as read
-    for (Message message : messages) {
-        if (!message.getSenderId().equals(currentUserId)) {  // Fixed missing parenthesis
-            markMessageAsRead(message);
-        }
-    }
-}
-
-//    private void markMessageAsRead(Message message) {
-//        if (message == null || message.isRead() || message.getSenderId().equals(currentUserId)) {
-//            return;
-//        }
-//
-//        db.collection("chats").document(chatId)
-//                .collection("messages").document(message.getMessageId())
-//                .update("status", Message.STATUS_READ)  // Update status to READ
-//                .addOnSuccessListener(aVoid -> {
-//                    // Update local message status
-//                    message.setStatus(Message.STATUS_READ);
-//                    int position = messages.indexOf(message);
-//                    if (position != -1) {
-//                        chatAdapter.notifyItemChanged(position);
-//                    }
-//                })
-//                .addOnFailureListener(e ->
-//                        Log.e("ChatActivity", "Error marking message as read", e));
-//    }
-private void markMessageAsRead(Message message) {
-    if (message.isRead() || message.getSenderId().equals(currentUserId)) {
-        return;
-    }
-
-    chatRepository.markMessageAsRead(chatId, message.getMessageId())
-            .addOnSuccessListener(aVoid -> {
-                // Update local message
-                message.markAsRead();
-                chatAdapter.notifyItemChanged(messages.indexOf(message));
-            });
-}
-
-
-
-    private void markAllMessagesAsRead() {
-        for (Message message : messages) {
-            if (!message.getSenderId().equals(currentUserId) && !message.isRead()) {
-                markMessageAsRead(message);
-            }
-        }
-
-        // Also update chat-level read status
-        chatRepository.markChatAsRead(chatId, currentUserId);
+    @Override
+    protected void onResume() {
+        super.onResume();
+        markChatAsRead();
+        chatViewModel.markAllMessagesAsRead();
     }
 
     private void sendMessage() {
         String content = messageInput.getText().toString().trim();
-        if (content.isEmpty()) return;
+        if (content.isEmpty()) {
+            return;
+        }
 
-        // Create new message
-        Message message = new Message(currentUserId, receiverId, chatId, content);
-        message.setTimestamp(new Date(System.currentTimeMillis()));
-        message.setStatus(Message.STATUS_SENT);
-
-        chatRepository.sendMessage(chatId, currentUserId, receiverId, message)
-                .addOnSuccessListener(messageId -> {
-                    messageInput.setText("");
-                    updateMessageStatus(messageId, true, false);
-                    scrollToBottom();
-                })
-                .addOnFailureListener(e -> {
-                    Toast.makeText(this, "Failed to send message", Toast.LENGTH_SHORT).show();
-                    Log.e("ChatActivity", "Message send failed", e);
-                });
-    }
-    private void updateMessageStatus(String messageId, boolean isDelivered, boolean isRead) {
-        chatRepository.updateMessageStatus(chatId, messageId, isDelivered, isRead)
-                .addOnFailureListener(e -> Log.e("ChatActivity", "Error updating status", e));
+        chatViewModel.sendMessage(content);
     }
 
     private String generateChatId(String user1, String user2) {
@@ -334,9 +199,11 @@ private void markMessageAsRead(Message message) {
     }
 
     private void scrollToBottom() {
-        if (messages.size() > 0) {
-            chatRecyclerView.postDelayed(() ->
-                    chatRecyclerView.smoothScrollToPosition(messages.size() - 1), 100);
+        if (!messages.isEmpty()) {
+            chatRecyclerView.postDelayed(
+                    () -> chatRecyclerView.smoothScrollToPosition(messages.size() - 1),
+                    100
+            );
         }
     }
 
@@ -346,12 +213,5 @@ private void markMessageAsRead(Message message) {
 
     private void toggleEmojiKeyboard() {
         // Implement emoji keyboard
-    }
-
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        if (messagesListener != null) messagesListener.remove();
-        if (chatListener != null) chatListener.remove();
     }
 }
