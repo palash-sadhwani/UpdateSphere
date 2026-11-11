@@ -2,7 +2,6 @@ package com.example.chat;
 
 import android.content.Intent;
 import android.os.Bundle;
-import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -14,36 +13,30 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
+import com.example.chat.presentation.status.StatusViewModel;
 import com.google.firebase.auth.FirebaseAuth;
-import com.google.firebase.firestore.DocumentSnapshot;
-import com.google.firebase.firestore.EventListener;
-import com.google.firebase.firestore.FirebaseFirestore;
-import com.google.firebase.firestore.FirebaseFirestoreException;
-import com.google.firebase.firestore.Query;
-import com.google.firebase.firestore.QuerySnapshot;
 
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 public class StatusFragment extends Fragment implements StatusAdapter.OnStatusClickListener {
 
     private RecyclerView statusRecyclerView;
     private StatusAdapter statusAdapter;
     private List<Status> statusList;
-    private FirebaseFirestore db;
+    private StatusViewModel statusViewModel;
     private String currentUserId;
-    private String currentUserName;
 
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
         View view = inflater.inflate(R.layout.fragment_status, container, false);
 
-        db = FirebaseFirestore.getInstance();
-        currentUserId = FirebaseAuth.getInstance().getCurrentUser().getUid();
+        FirebaseAuth auth = FirebaseAuth.getInstance();
+        if (auth.getCurrentUser() == null) {
+            return view;
+        }
 
+        currentUserId = auth.getCurrentUser().getUid();
         // Initialize views
         statusRecyclerView = view.findViewById(R.id.statusRecyclerView);
         FloatingActionButton addStatusButton = view.findViewById(R.id.addStatusButton);
@@ -54,85 +47,32 @@ public class StatusFragment extends Fragment implements StatusAdapter.OnStatusCl
         statusRecyclerView.setLayoutManager(new LinearLayoutManager(getContext()));
         statusRecyclerView.setAdapter(statusAdapter);
 
-        loadCurrentUserName();
+        statusViewModel = new androidx.lifecycle.ViewModelProvider(this)
+                .get(StatusViewModel.class);
+        observeStatusState();
+        statusViewModel.start(currentUserId);
         addStatusButton.setOnClickListener(v -> openStatusCreator());
-
-        loadStatuses();
 
         return view;
     }
 
-    private void loadCurrentUserName() {
-        db.collection("users").document(currentUserId)
-                .get()
-                .addOnSuccessListener(documentSnapshot -> {
-                    if (documentSnapshot.exists()) {
-                        currentUserName = documentSnapshot.getString("name");
-                    }
-                });
-    }
+    private void observeStatusState() {
+        statusViewModel.getStatuses().observe(getViewLifecycleOwner(), statuses -> {
+            statusList = statuses;
+            statusAdapter.updateStatusList(statuses);
+        });
 
+        statusViewModel.getState().observe(getViewLifecycleOwner(), state -> {
+            if (state.getStatus() == StatusViewModel.Status.ERROR) {
+                Toast.makeText(getContext(), state.getErrorMessage(), Toast.LENGTH_SHORT).show();
+            }
+        });
 
-    private void loadStatuses() {
-        db.collection("status")
-                .addSnapshotListener((value, error) -> {
-                    if (error != null) {
-                        Toast.makeText(getContext(), "Error loading statuses", Toast.LENGTH_SHORT).show();
-                        return;
-                    }
-
-                    List<Status> newStatusList = new ArrayList<>();
-                    Map<String, Status> userStatusMap = new HashMap<>();
-
-                    // Add My Status header
-                    Status myStatus = new Status(
-                            currentUserId,
-                            currentUserName != null ? currentUserName : "My Status",
-                            null,
-                            "Tap to add status"
-                    );
-                    newStatusList.add(myStatus);
-
-                    if (value != null) {
-                        for (DocumentSnapshot doc : value.getDocuments()) {
-                            String userId = doc.getString("userId");
-                            String userName = doc.getString("userName");
-                            List<Map<String, Object>> statuses = (List<Map<String, Object>>) doc.get("statuses");
-
-                            if (statuses != null && !statuses.isEmpty()) {
-                                // Get the latest status for each user
-                                Map<String, Object> latestStatus = statuses.get(0);
-                                String text = (String) latestStatus.get("text");
-                                String imageUrl = (String) latestStatus.get("imageUrl");
-                                long timestamp = (long) latestStatus.get("timestamp");
-
-                                Status status = new Status(
-                                        doc.getId(),
-                                        userId,
-                                        userName,
-                                        imageUrl,
-                                        timestamp,
-                                        text
-                                );
-                                status.updateTime();
-
-                                // Only add one status per user
-                                if (!userStatusMap.containsKey(userId)) {
-                                    userStatusMap.put(userId, status);
-                                }
-                            }
-                        }
-                    }
-
-                    // Add all unique user statuses
-                    newStatusList.addAll(userStatusMap.values());
-
-                    // Sort by timestamp (newest first)
-                    Collections.sort(newStatusList.subList(1, newStatusList.size()),
-                            (s1, s2) -> Long.compare(s2.getTimestamp(), s1.getTimestamp()));
-
-                    statusAdapter.updateStatusList(newStatusList);
-                });
+        statusViewModel.getDeleteCompleted().observe(getViewLifecycleOwner(), completed -> {
+            if (Boolean.TRUE.equals(completed)) {
+                Toast.makeText(getContext(), "Status deleted", Toast.LENGTH_SHORT).show();
+            }
+        });
     }
 //    private void loadStatuses() {
 //        db.collection("status")
@@ -205,32 +145,7 @@ public class StatusFragment extends Fragment implements StatusAdapter.OnStatusCl
 
     @Override
     public void onDeleteStatus(Status statusToDelete) {
-        db.collection("status").document(currentUserId)
-                .get()
-                .addOnSuccessListener(documentSnapshot -> {
-                    if (!documentSnapshot.exists()) return;
-
-                    List<Map<String, Object>> statuses = (List<Map<String, Object>>) documentSnapshot.get("statuses");
-                    if (statuses == null) return;
-
-                    List<Map<String, Object>> updatedList = new ArrayList<>();
-                    for (Map<String, Object> s : statuses) {
-                        long ts = s.get("timestamp") != null ? (long) s.get("timestamp") : -1;
-                        if (ts != statusToDelete.getTimestamp()) {
-                            updatedList.add(s);
-                        }
-                    }
-
-                    documentSnapshot.getReference()
-                            .update("statuses", updatedList)
-                            .addOnSuccessListener(unused -> {
-                                Toast.makeText(getContext(), "Status deleted", Toast.LENGTH_SHORT).show();
-                                loadStatuses();
-                            })
-                            .addOnFailureListener(e -> {
-                                Toast.makeText(getContext(), "Failed to delete status", Toast.LENGTH_SHORT).show();
-                            });
-                });
+        statusViewModel.deleteStatus(statusToDelete);
     }
 
     @Override
@@ -241,6 +156,16 @@ public class StatusFragment extends Fragment implements StatusAdapter.OnStatusCl
     @Override
     public void onResume() {
         super.onResume();
-        loadStatuses();
+        if (statusViewModel != null) {
+            statusViewModel.refresh();
+        }
+    }
+
+    @Override
+    public void onDestroyView() {
+        if (statusViewModel != null) {
+            statusViewModel.stop();
+        }
+        super.onDestroyView();
     }
 }
