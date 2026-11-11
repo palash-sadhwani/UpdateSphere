@@ -14,18 +14,10 @@ import android.widget.Toast;
 
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.lifecycle.ViewModelProvider;
 
-import com.cloudinary.android.MediaManager;
-import com.cloudinary.android.callback.ErrorInfo;
-import com.cloudinary.android.callback.UploadCallback;
+import com.example.chat.presentation.status.CreateStatusViewModel;
 import com.google.firebase.auth.FirebaseAuth;
-import com.google.firebase.firestore.DocumentReference;
-import com.google.firebase.firestore.FirebaseFirestore;
-
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 
 public class CreateStatusActivity extends AppCompatActivity {
 
@@ -34,7 +26,7 @@ public class CreateStatusActivity extends AppCompatActivity {
     private View imagePreviewContainer;
     private ProgressBar progressBar;
     private Uri imageUri;
-    private FirebaseFirestore db;
+    private CreateStatusViewModel createStatusViewModel;
     private String currentUserId;
     // At the top with other view declarations:
 
@@ -50,16 +42,15 @@ public class CreateStatusActivity extends AppCompatActivity {
         imagePreviewContainer = findViewById(R.id.imagePreviewContainer);
         progressBar = findViewById(R.id.progressBar);
 
-        // Initialize Cloudinary
-        try {
-            MediaManager.init(this);
-        } catch (IllegalStateException e) {
-            // Already initialized
+        FirebaseAuth auth = FirebaseAuth.getInstance();
+        if (auth.getCurrentUser() == null) {
+            finish();
+            return;
         }
-
-        // Initialize Firestore
-        db = FirebaseFirestore.getInstance();
-        currentUserId = FirebaseAuth.getInstance().getCurrentUser().getUid();
+        currentUserId = auth.getCurrentUser().getUid();
+        createStatusViewModel = new ViewModelProvider(this)
+                .get(CreateStatusViewModel.class);
+        observeCreateStatusState();
 
         // Set up listeners
         findViewById(R.id.addImageButton).setOnClickListener(v -> pickImage());
@@ -119,92 +110,34 @@ public class CreateStatusActivity extends AppCompatActivity {
             return;
         }
 
-        // Make sure progressBar is initialized
-        if (progressBar != null) {
-            progressBar.setVisibility(View.VISIBLE);
-        }
-        findViewById(R.id.postStatusButton).setEnabled(false);
-
-        if (imageUri != null) {
-            uploadImage(text);
-        } else {
-            saveStatusToFirestore(text, null);
-        }
+        createStatusViewModel.createStatus(currentUserId, text, imageUri);
     }
 
-    private void uploadImage(String text) {
-        MediaManager.get().upload(imageUri)
-                .option("folder", "status_images")
-                .callback(new UploadCallback() {
-                    @Override
-                    public void onStart(String requestId) {}
-
-                    @Override
-                    public void onProgress(String requestId, long bytes, long totalBytes) {}
-
-                    @Override
-                    public void onSuccess(String requestId, Map resultData) {
-                        String imageUrl = (String) resultData.get("url");
-                        saveStatusToFirestore(text, imageUrl);
-                    }
-
-                    @Override
-                    public void onError(String requestId, ErrorInfo error) {
-                        if (progressBar != null) {
-                            progressBar.setVisibility(View.GONE);
-                        }
-                        findViewById(R.id.postStatusButton).setEnabled(true);
-                        Toast.makeText(CreateStatusActivity.this,
-                                "Failed to upload image: " + error.getDescription(),
-                                Toast.LENGTH_SHORT).show();
-                    }
-
-                    @Override
-                    public void onReschedule(String requestId, ErrorInfo error) {}
-                })
-                .dispatch();
-    }
-
-    private void saveStatusToFirestore(String text, String imageUrl) {
-        DocumentReference docRef = db.collection("status").document(currentUserId);
-
-        docRef.get().addOnSuccessListener(documentSnapshot -> {
-            List<Map<String, Object>> statusList = new ArrayList<>();
-
-            if (documentSnapshot.exists()) {
-                statusList = (List<Map<String, Object>>) documentSnapshot.get("statuses");
-                if (statusList == null) {
-                    statusList = new ArrayList<>();
+    private void observeCreateStatusState() {
+        createStatusViewModel.getState().observe(this, event -> {
+            CreateStatusViewModel.CreateStatusState state = event.getContent();
+            if (state.getStatus() == CreateStatusViewModel.Status.LOADING) {
+                if (progressBar != null) {
+                    progressBar.setVisibility(View.VISIBLE);
                 }
+                findViewById(R.id.postStatusButton).setEnabled(false);
+            } else if (state.getStatus() == CreateStatusViewModel.Status.SUCCESS
+                    && event.consume()) {
+                if (progressBar != null) {
+                    progressBar.setVisibility(View.GONE);
+                }
+                Toast.makeText(this, "Status posted successfully", Toast.LENGTH_SHORT).show();
+                finish();
+            } else if (state.getStatus() == CreateStatusViewModel.Status.ERROR
+                    && event.consume()) {
+                if (progressBar != null) {
+                    progressBar.setVisibility(View.GONE);
+                }
+                findViewById(R.id.postStatusButton).setEnabled(true);
+                Toast.makeText(this,
+                        "Failed to post status: " + state.getErrorMessage(),
+                        Toast.LENGTH_SHORT).show();
             }
-
-            Map<String, Object> newStatus = new HashMap<>();
-            newStatus.put("text", text);
-            newStatus.put("imageUrl", imageUrl);
-            newStatus.put("timestamp", System.currentTimeMillis());
-
-            statusList.add(newStatus);
-
-            Map<String, Object> data = new HashMap<>();
-            data.put("userId", currentUserId);
-            data.put("userName", FirebaseAuth.getInstance().getCurrentUser().getDisplayName());
-            data.put("statuses", statusList);
-
-            docRef.set(data)
-                    .addOnSuccessListener(unused -> {
-                        progressBar.setVisibility(View.GONE);
-                        Toast.makeText(CreateStatusActivity.this,
-                                "Status posted successfully",
-                                Toast.LENGTH_SHORT).show();
-                        finish();
-                    })
-                    .addOnFailureListener(e -> {
-                        progressBar.setVisibility(View.GONE);
-                        findViewById(R.id.postStatusButton).setEnabled(true);
-                        Toast.makeText(CreateStatusActivity.this,
-                                "Failed to post status: " + e.getMessage(),
-                                Toast.LENGTH_SHORT).show();
-                    });
         });
     }
 }
