@@ -1,0 +1,14 @@
+<resources>
+    <string name="app_name">chat</string>
+
+
+
+    <string name="preview">Preview</string>
+    <string name="whats_on_your_mind">Whats on your mind</string>
+    <string name="create_new_status">Create New Status</string>
+    <string name="back_button">Back</string>
+    <string name="status_image">Status image</string>
+    <string name="remove_image">Remove image</string>
+    <string name="add_image">Add image</string>
+    <string name="post_status">Post Status</string>
+</resources>
